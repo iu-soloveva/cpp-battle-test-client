@@ -193,28 +193,42 @@ sequenceDiagram
 ### Фаза 2 — боевой цикл (тик 2, 3, …)
 
 ```mermaid
-flowchart TD
-    A[Battle::run] --> B{isFinished?<br/>alive ≤ 1 или<br/>!canAnyUnitAct}
-    B -->|да| Z[конец]
-    B -->|нет| C[performNextStep]
+sequenceDiagram
+    participant Run as Battle::run
+    participant State as BattleState
+    participant Registry as UnitBehaviorRegistry
+    participant Beh as IUnitBehavior
+    participant Cmd as ICommand
+    participant Mech as Mechanics
+    participant Log as EventLog
 
-    C --> D[removeDeadUnits<br/>hp=0 → pendingRemoval<br/>UNIT_DIED]
-    D --> E[processUnitActions<br/>порядок: _spawnOrder]
+    loop пока бой не завершён
+        Run->>State: isFinished()
+        Note over State: alive <= 1 или никто не может действовать
 
-    E --> F{для каждого<br/>активного юнита}
-    F --> G[UnitBehaviorRegistry::get(type)]
-    G --> H[behavior.act(state, id)]
-    H --> I[selectCommand → unique_ptr ICommand]
-    I --> J{command<br/>!= null?}
-    J -->|нет| F
-    J -->|да| K[command.execute(state, id)]
-    K --> L[Mechanics:<br/>melee / ranged / march]
-    L --> M[CommandResult<br/>с событиями]
-    M --> F
+        alt бой завершён
+            Run-->>Run: выход
+        else следующий тик
+            Run->>State: performNextStep()
+            State->>State: removeDeadUnits (UNIT_DIED)
+            State->>State: processUnitActions (_spawnOrder)
 
-    F -->|все обработаны| N[logEvents → stdout]
-    N --> O[tick++]
-    O --> B
+            loop для каждого активного юнита
+                State->>Registry: get(type)
+                Registry-->>State: behavior
+                State->>Beh: act(state, id)
+                Beh->>Beh: selectCommand()
+                alt команда выбрана
+                    Beh->>Cmd: execute(state, id)
+                    Cmd->>Mech: melee / ranged / march
+                    Mech-->>Cmd: CommandResult
+                end
+            end
+
+            State->>Log: logEvents (stdout)
+            State->>State: tick++
+        end
+    end
 ```
 
 
@@ -245,7 +259,7 @@ flowchart LR
     EX --> ME
     ME --> CQ
     ME --> MM
-    ME --> UR[UnitRegistry<br/>HP, Position, March]
+    ME --> UR["UnitRegistry: HP, Position, March"]
 ```
 
 
